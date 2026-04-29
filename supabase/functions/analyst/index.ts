@@ -22,16 +22,19 @@ STEP 3 — STRUCTURED INTENT: emit JSON in a fenced code block tagged 'json':
 
 STEP 4 — CONTEXT ENRICHMENT: use provided schema + definitions ONLY. Prefer defined business metrics over raw columns. Never invent tables or columns.
 
-STEP 5 — SQL GENERATION: clean, readable Postgres SQL in a fenced 'sql' block. Include proper joins, filters, aggregations.
+STEP 5 — GENERATED PROMPT (MANDATORY, VISIBLE): produce the exact, self-contained natural-language prompt that will be sent to the data/SQL LLM. It must restate: the linked tables/columns from the Context Layer, the metric definition, dimensions, filters, time range, output format (table/CSV), and column order. Emit it inside a fenced code block tagged 'prompt' so the UI can display it clearly:
+\`\`\`prompt
+<the full prompt here>
+\`\`\`
 
-STEP 6 — VALIDATION CHECKS: list NULL-heavy columns, unexpected row count risks, missing joins. Flag clearly.
+STEP 6 — SQL GENERATION: clean, readable Postgres SQL in a fenced 'sql' block. Include proper joins, filters, aggregations. Match the columns/order described in the GENERATED PROMPT.
 
-STEP 7 — USER VERIFICATION (MANDATORY): present interpreted request, assumptions, and SQL. End your message with EXACTLY this line on its own:
+STEP 7 — VALIDATION CHECKS: list NULL-heavy columns, unexpected row count risks, missing joins. Flag clearly. Then end your message with EXACTLY this line on its own:
 AWAITING_APPROVAL: Do you want to proceed with this query?
 
 Do NOT generate the final report yet.
 
-STEP 8 — FINAL REPORT (ONLY AFTER APPROVAL): when the user approves, output a structured Markdown report in this exact shape:
+STEP 8 — FINAL REPORT (ONLY AFTER APPROVAL): when the user approves, output a structured Markdown report in the shape below. CRITICAL: include a fenced \`results\` block containing JSON of shape {"columns": ["col1","col2",...], "rows": [[..],[..]]} with realistic mock rows (8–20) consistent with the SQL, the Context Layer schema, and known UWSOM/WWAMI values. The UI uses this block to render a table and a downloadable CSV.
 
 # 📊 <Report Title>
 
@@ -56,6 +59,11 @@ STEP 8 — FINAL REPORT (ONLY AFTER APPROVAL): when the user approves, output a 
 ## 🧠 SQL Query
 \`\`\`sql
 ...
+\`\`\`
+
+## 📋 Results (mock)
+\`\`\`results
+{"columns": ["..."], "rows": [["..."]]}
 \`\`\`
 
 ## ⚠ Notes
