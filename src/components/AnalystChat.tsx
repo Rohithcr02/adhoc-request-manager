@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { Send, Sparkles, CheckCircle2, AlertTriangle, RotateCcw, FileText, Download, Table as TableIcon } from "lucide-react";
 import type { Ticket, ContextLayer } from "@/data/mockData";
+import { WorkflowStepper, detectCurrentStep } from "@/components/WorkflowStepper";
+import { DataTrustCard } from "@/components/DataTrustCard";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyst`;
 
-const AUTO_START = "Please start with STEP 1 using the ticket description above. Link the request to the Context Layer and proceed through the workflow.";
+const AUTO_START = "Analyze this ticket. Use the Context Layer definitions to automatically resolve any ambiguity — do NOT ask clarifying questions unless the context layer is completely silent on a critical term. State your assumptions explicitly, then run autonomously through STEP 1 → STEP 7 in a single response. Pause ONLY at STEP 7 for my approval before generating the final report.";
 
 export function AnalystChat({
   ticket,
@@ -115,13 +117,15 @@ export function AnalystChat({
   const last = messages[messages.length - 1];
   const awaitingApproval = last?.role === "assistant" && /AWAITING_APPROVAL/.test(last.content);
 
+  const showTrustCard = detectCurrentStep(messages) === 8;
+
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-background">
       <div className="px-6 py-2 border-b border-border flex items-center justify-between bg-card">
         <div className="flex items-center gap-2 text-sm">
           <Sparkles className="h-4 w-4 text-primary" />
           <span className="font-medium">AI Data Analyst</span>
-          <span className="text-xs text-muted-foreground">· strict workflow · context-aware</span>
+          <span className="text-xs text-muted-foreground">· autonomous · context-grounded · schema-verified</span>
         </div>
         <button
           onClick={() => { setMessages((m) => m.slice(0, 1)); autoStartedRef.current = null; }}
@@ -130,6 +134,7 @@ export function AnalystChat({
           <RotateCcw className="h-3 w-3" /> Reset
         </button>
       </div>
+      <WorkflowStepper messages={messages} />
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
         {messages.map((m, i) => (
@@ -146,6 +151,8 @@ export function AnalystChat({
           </div>
         )}
       </div>
+
+      {showTrustCard && <DataTrustCard messages={messages} context={context} />}
 
       {awaitingApproval && (
         <div className="px-6 py-3 border-t border-border bg-primary/5 flex items-center justify-between">
