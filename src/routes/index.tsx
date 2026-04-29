@@ -1,26 +1,31 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
+import { JiraTopBar } from "@/components/JiraTopBar";
+import { TicketList } from "@/components/TicketList";
+import { TicketDetail } from "@/components/TicketDetail";
+import { AnalystChat } from "@/components/AnalystChat";
+import { ContextLayerPanel } from "@/components/ContextLayerPanel";
+import { MOCK_TICKETS, DEFAULT_CONTEXT, type Ticket, type ContextLayer } from "@/data/mockData";
 
 export const Route = createFileRoute("/")({
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. For sites with multiple pages (About, Services, Contact, etc.),
-// create separate route files (about.tsx, services.tsx, contact.tsx) — don't put all pages in this file.
-function PlaceholderIndex() {
+function Index() {
+  const [selected, setSelected] = useState<Ticket>(MOCK_TICKETS[0]);
+  const [context, setContext] = useState<ContextLayer>(DEFAULT_CONTEXT);
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <div className="h-screen flex flex-col bg-background text-foreground">
+      <JiraTopBar />
+      <div className="flex-1 flex min-h-0">
+        <TicketList selectedId={selected.id} onSelect={setSelected} />
+        <main className="flex-1 flex flex-col min-w-0">
+          <TicketDetail ticket={selected} />
+          <AnalystChat ticket={selected} context={context} />
+        </main>
+        <ContextLayerPanel context={context} onChange={setContext} />
+      </div>
     </div>
   );
-}
-
-function Index() {
-  return <PlaceholderIndex />;
 }
