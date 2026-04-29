@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { Send, Sparkles, CheckCircle2, AlertTriangle, RotateCcw } from "lucide-react";
+import { Send, Sparkles, CheckCircle2, AlertTriangle, RotateCcw, FileText, Download, Table as TableIcon } from "lucide-react";
 import type { Ticket, ContextLayer } from "@/data/mockData";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyst`;
+
+const AUTO_START = "Please start with STEP 1 using the ticket description above. Link the request to the Context Layer and proceed through the workflow.";
 
 export function AnalystChat({
   ticket,
@@ -19,16 +21,28 @@ export function AnalystChat({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const autoStartedRef = useRef<string | null>(null);
 
   // Reset chat when switching tickets
   useEffect(() => {
     setMessages([
       {
         role: "assistant",
-        content: `👋 I'm your AI Data Analyst for **${ticket.id}**. I'll follow our strict 8-step workflow: parse → detect ambiguity → intent → SQL → validation → your verification → final report.\n\nWhen ready, paste the stakeholder request below or just ask me to start with the ticket description.`,
+        content: `👋 I'm your AI Data Analyst for **${ticket.id}**. I'll read the ticket, link it to the Context Layer, show you the **generated prompt + SQL**, wait for your approval, and then return a **table + downloadable CSV**.`,
       },
     ]);
     setError(null);
+    autoStartedRef.current = null;
+  }, [ticket.id]);
+
+  // Auto-start the workflow once per ticket
+  useEffect(() => {
+    if (autoStartedRef.current === ticket.id) return;
+    if (loading) return;
+    autoStartedRef.current = ticket.id;
+    const t = setTimeout(() => send(AUTO_START), 200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticket.id]);
 
   useEffect(() => {
@@ -110,7 +124,7 @@ export function AnalystChat({
           <span className="text-xs text-muted-foreground">· strict workflow · context-aware</span>
         </div>
         <button
-          onClick={() => setMessages((m) => m.slice(0, 1))}
+          onClick={() => { setMessages((m) => m.slice(0, 1)); autoStartedRef.current = null; }}
           className="text-xs flex items-center gap-1 px-2 py-1 rounded hover:bg-muted text-muted-foreground"
         >
           <RotateCcw className="h-3 w-3" /> Reset
@@ -189,6 +203,13 @@ export function AnalystChat({
 
 function Bubble({ msg }: { msg: Msg }) {
   const isUser = msg.role === "user";
+  const promptBlock = !isUser ? extractFenced(msg.content, "prompt") : null;
+  const resultsBlock = !isUser ? extractFenced(msg.content, "results") : null;
+  const cleaned = !isUser
+    ? msg.content
+        .replace(/```prompt[\s\S]*?```/g, "")
+        .replace(/```results[\s\S]*?```/g, "")
+    : msg.content;
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
       <div
@@ -202,11 +223,86 @@ function Bubble({ msg }: { msg: Msg }) {
         {isUser ? (
           <div className="whitespace-pre-wrap">{msg.content}</div>
         ) : (
-          <div className="prose prose-sm max-w-none prose-pre:bg-muted prose-pre:text-foreground prose-pre:text-xs prose-code:text-xs prose-headings:mt-3 prose-headings:mb-1 prose-p:my-1 prose-ul:my-1 prose-li:my-0">
-            <ReactMarkdown>{msg.content}</ReactMarkdown>
+          <div className="space-y-3">
+            {promptBlock && <PromptPanel text={promptBlock} />}
+            <div className="prose prose-sm max-w-none prose-pre:bg-muted prose-pre:text-foreground prose-pre:text-xs prose-code:text-xs prose-headings:mt-3 prose-headings:mb-1 prose-p:my-1 prose-ul:my-1 prose-li:my-0">
+              <ReactMarkdown>{cleaned}</ReactMarkdown>
+            </div>
+            {resultsBlock && <ResultsTable raw={resultsBlock} />}
           </div>
         )}
       </div>
     </div>
   );
+}
+
+function extractFenced(text: string, tag: string): string | null {
+  const re = new RegExp("```" + tag + "\\s*([\\s\\S]*?)```", "i");
+  const m = text.match(re);
+  return m ? m[1].trim() : null;
+}
+
+function PromptPanel({ text }: { text: string }) {
+  return (
+    <div className="rounded-md border border-primary/30 bg-primary/5">
+      <div className="px-3 py-1.5 border-b border-primary/20 flex items-center gap-1.5 text-xs font-medium text-primary">
+        <FileText className="h-3.5 w-3.5" /> Generated Prompt (sent to data LLM)
+      </div>
+      <pre className="p-3 text-xs whitespace-pre-wrap font-mono text-foreground/90 max-h-72 overflow-auto">{text}</pre>
+    </div>
+  );
+}
+
+function ResultsTable({ raw }: { raw: string }) {
+  let parsed: { columns: string[]; rows: (string | number)[][] } | null = null;
+  try { parsed = JSON.parse(raw); } catch { parsed = null; }
+  if (!parsed?.columns?.length) {
+    return <div className="text-xs text-muted-foreground">Results block could not be parsed.</div>;
+  }
+  const csv = toCSV(parsed.columns, parsed.rows);
+  const downloadCSV = () => {
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "report.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <div className="rounded-md border border-border bg-background">
+      <div className="px-3 py-1.5 border-b border-border flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-xs font-medium">
+          <TableIcon className="h-3.5 w-3.5 text-primary" /> Results · {parsed.rows.length} rows
+        </div>
+        <button onClick={downloadCSV} className="text-xs flex items-center gap-1 px-2 py-1 rounded bg-primary text-primary-foreground hover:opacity-90">
+          <Download className="h-3 w-3" /> Download CSV
+        </button>
+      </div>
+      <div className="overflow-auto max-h-80">
+        <table className="w-full text-xs">
+          <thead className="bg-muted sticky top-0">
+            <tr>{parsed.columns.map((c) => (
+              <th key={c} className="text-left px-3 py-1.5 font-medium border-b border-border">{c}</th>
+            ))}</tr>
+          </thead>
+          <tbody>
+            {parsed.rows.map((r, i) => (
+              <tr key={i} className="odd:bg-background even:bg-muted/30">
+                {r.map((cell, j) => (
+                  <td key={j} className="px-3 py-1 border-b border-border/50">{String(cell)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function toCSV(cols: string[], rows: (string | number)[][]) {
+  const esc = (v: unknown) => {
+    const s = String(v ?? "");
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return [cols.map(esc).join(","), ...rows.map((r) => r.map(esc).join(","))].join("\n");
 }
